@@ -137,7 +137,6 @@ public class AliyunOSSFilesystemTest {
 		assertEquals(NodeType.FILE, stat.type());
 		assertEquals(0, fs.getattr("/" + EXISTING_FILE_IN_FOLDER_PATH, stat));
 		assertEquals(NodeType.FILE, stat.type());
-		// invalid file-name causes IllegalStateException
 		String path = "/" + EXISTING_FOLDER_NAME + "/notexist.txt";
 		assertEquals(-ErrorCodes.ENOENT(), fs.getattr(path, stat));
 		// invalid top-level-dir causes ENOENT
@@ -174,7 +173,36 @@ public class AliyunOSSFilesystemTest {
 		final String[] result = filledFiles.toArray(new String[filledFiles.size()]);
 		Arrays.sort(result);
 		assertArrayEquals(expected, result);
+	}
 
+	@Test
+	public void testReadDirMoreThanMaxKeys() {
+		fs.setReadMaxKeys(3);
+
+		List<String> keys = new ArrayList<String>(10);
+
+		for (int i = 0; i < 10; i++) {
+			String key = EXISTING_FOLDER_NAME + "/" + RandomStringUtils.random(8, true, true);
+			createSmallFile(key);
+			keys.add(key);
+		}
+		try {
+			final List<String> filledFiles = new ArrayList<String>();
+			DirectoryFiller filler = new DirectoryFillerImplementation(filledFiles);
+
+			assertEquals(0, fs.readdir("/" + EXISTING_FOLDER_NAME, filler));
+			keys.add(EXISTING_FILE_IN_FOLDER_PATH);
+			keys.add(EXISTING_LARGEFILE_IN_FOLDER_PATH);
+			final String[] expected = keys.toArray(new String[keys.size()]);
+			Arrays.sort(expected);
+			final String[] result = filledFiles.toArray(new String[filledFiles.size()]);
+			Arrays.sort(result);
+			assertArrayEquals(expected, result);
+		} finally {
+			keys.forEach((key) -> {
+				client.deleteObject(bucketName, key);
+			});
+		}
 	}
 
 	@Test

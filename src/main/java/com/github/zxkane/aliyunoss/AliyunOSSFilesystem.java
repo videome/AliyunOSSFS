@@ -4,8 +4,6 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
-import java.util.HashSet;
-import java.util.Set;
 
 import com.aliyun.oss.OSSClient;
 import com.aliyun.oss.OSSErrorCode;
@@ -31,23 +29,12 @@ import net.fusejna.util.FuseFilesystemAdapterFull;
  *
  */
 public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Closeable {
-	private static final long CACHE_TIMEOUT = 60 * 1000; // one minute
 
 	private OSSClient ossClient;
 
 	private String bucketName;
 
-	/**
-	 * Don't print out a warning for some directories which are queried by some
-	 * apps, e.g. Nautilus on Gnome
-	 */
-	private static Set<String> IGNORED_DIRS = new HashSet<String>();
-
-	static {
-		IGNORED_DIRS.add("/.hidden");
-		IGNORED_DIRS.add("/.Trash");
-		IGNORED_DIRS.add("/.Trash-1000");
-	}
+	private int readMaxKeys = 1000;
 
 	public AliyunOSSFilesystem(OSSClient ossClient, String bucketName, boolean enableLogging) throws IOException {
 		super();
@@ -57,6 +44,10 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 
 		this.ossClient = ossClient;
 		this.bucketName = bucketName;
+	}
+
+	public void setReadMaxKeys(int keys) {
+		this.readMaxKeys = keys;
 	}
 
 	@Override
@@ -124,10 +115,12 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 		ListObjectsRequest listObjectsRequest = new ListObjectsRequest(bucketName);
 		// "/" 为文件夹的分隔符
 		listObjectsRequest.setDelimiter("/");
+		listObjectsRequest.setMaxKeys(this.readMaxKeys);
 
+		final String prefix = path.substring(1) + "/";
 		if (!"/".equals(path)) {
 			try {
-				ossClient.getObjectMetadata(bucketName, path.substring(1) + "/");
+				ossClient.getObjectMetadata(bucketName, prefix);
 			} catch (OSSException e) {
 				if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
 					throw new IllegalStateException("Error reading non-existing directory in path " + path);
@@ -135,19 +128,26 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 				throw new IllegalStateException("Error reading directory in path " + path, e);
 			}
 			// 列出目录下的所有文件和文件夹
-			listObjectsRequest.setPrefix(path.substring(1) + "/");
-		}
-		ObjectListing listing = ossClient.listObjects(listObjectsRequest);
-
-		// 遍历所有CommonPrefix
-		for (String commonPrefix : listing.getCommonPrefixes()) {
-			filler.add("/" + commonPrefix.substring(0, commonPrefix.length() - 1));
+			listObjectsRequest.setPrefix(prefix);
 		}
 
-		// 遍历所有Object
-		for (OSSObjectSummary objectSummary : listing.getObjectSummaries()) {
-			filler.add(objectSummary.getKey());
-		}
+		ObjectListing listing;
+		do {
+			listing = ossClient.listObjects(listObjectsRequest);
+			// 遍历所有CommonPrefix
+			for (String commonPrefix : listing.getCommonPrefixes()) {
+				filler.add("/" + commonPrefix.substring(0, commonPrefix.length() - 1));
+			}
+
+			// 遍历所有Object
+			for (OSSObjectSummary objectSummary : listing.getObjectSummaries()) {
+				if (prefix.equals(objectSummary.getKey()))
+					continue;
+				filler.add(objectSummary.getKey());
+			}
+
+			listObjectsRequest.setMarker(listing.getNextMarker());
+		} while (listing.isTruncated());
 
 		return 0;
 	}
