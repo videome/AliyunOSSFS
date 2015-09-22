@@ -12,11 +12,14 @@ import com.aliyun.oss.OSSException;
 import com.aliyun.oss.model.ListObjectsRequest;
 import com.aliyun.oss.model.OSSObjectSummary;
 import com.aliyun.oss.model.ObjectListing;
+import com.aliyun.oss.model.ObjectMetadata;
 
 import net.fusejna.DirectoryFiller;
+import net.fusejna.ErrorCodes;
 import net.fusejna.FuseFilesystem;
 import net.fusejna.StructFuseFileInfo.FileInfoWrapper;
 import net.fusejna.StructStat.StatWrapper;
+import net.fusejna.types.TypeMode.NodeType;
 import net.fusejna.util.FuseFilesystemAdapterFull;
 
 /**
@@ -55,6 +58,30 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 
 	@Override
 	public int getattr(final String path, final StatWrapper stat) {
+		try {
+			if ("/".equals(path)) {
+				stat.setMode(NodeType.DIRECTORY, true, false, true, true, false, true, true, false, true);
+			} else {
+				ObjectMetadata objectMetadata = ossClient.getObjectMetadata(bucketName, path.substring(1));
+				stat.setMode(NodeType.FILE, true, false, false, true, false, false, true, false, false);
+				stat.setAllTimesMillis(objectMetadata.getLastModified().getTime());
+			}
+		} catch (OSSException e) {
+			if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
+				try {
+					ObjectMetadata objectMetadata = ossClient.getObjectMetadata(bucketName, path.substring(1) + "/");
+					stat.setMode(NodeType.DIRECTORY, true, false, false, true, false, false, true, false, false);
+					stat.setAllTimesMillis(objectMetadata.getLastModified().getTime());
+				} catch (OSSException e2) {
+					if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
+						return -ErrorCodes.ENOENT();
+					}
+					throw new IllegalStateException("Error reading path " + path);
+				}
+				return 0;
+			}
+			throw new IllegalStateException("Error reading path " + path);
+		}
 		return 0;
 	}
 

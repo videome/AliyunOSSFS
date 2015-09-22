@@ -1,6 +1,7 @@
 package com.github.zxkane.aliyunoss;
 
 import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -14,6 +15,7 @@ import java.util.List;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.After;
 import org.junit.AfterClass;
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -23,6 +25,11 @@ import com.aliyun.oss.model.ObjectMetadata;
 import com.aliyun.oss.model.PutObjectResult;
 
 import net.fusejna.DirectoryFiller;
+import net.fusejna.ErrorCodes;
+import net.fusejna.FuseException;
+import net.fusejna.StatWrapperFactory;
+import net.fusejna.StructStat.StatWrapper;
+import net.fusejna.types.TypeMode.NodeType;
 
 public class AliyunOSSFilesystemTest {
 
@@ -96,6 +103,45 @@ public class AliyunOSSFilesystemTest {
 	@After
 	public void tearDown() throws IOException {
 		fs.close();
+	}
+
+	@Test
+	public void testGetAttr() throws IOException, FuseException {
+		StatWrapper stat = getStatsWrapper();
+		assertEquals(0, fs.getattr("/", stat));
+		assertEquals(NodeType.DIRECTORY, stat.type());
+		assertEquals(0, fs.getattr("/" + EXISTING_FOLDER_NAME, stat));
+		assertEquals(NodeType.DIRECTORY, stat.type());
+		assertEquals(0, fs.getattr("/" + EXISTING_FILE1_PATH, stat));
+		assertEquals(NodeType.FILE, stat.type());
+		assertEquals(0, fs.getattr("/" + EXISTING_FILE2_PATH, stat));
+		assertEquals(NodeType.FILE, stat.type());
+		assertEquals(0, fs.getattr("/" + EXISTING_FILE_IN_FOLDER_PATH, stat));
+		assertEquals(NodeType.FILE, stat.type());
+		// invalid file-name causes IllegalStateException
+		String path = "/" + EXISTING_FOLDER_NAME + "/notexist.txt";
+		assertEquals(-ErrorCodes.ENOENT(), fs.getattr(path, stat));
+		// invalid top-level-dir causes ENOENT
+		assertEquals(-ErrorCodes.ENOENT(), fs.getattr("/notexistingmain", stat));
+
+	}
+
+	private StatWrapper getStatsWrapper() {
+		final StatWrapper wrapper;
+		try {
+			wrapper = StatWrapperFactory.create();
+		} catch (UnsatisfiedLinkError e) {
+			System.out.println("This might fail on machines without fuse-binaries.");
+			e.printStackTrace();
+			Assume.assumeNoException(e); // stop test silently
+			return null;
+		} catch (NoClassDefFoundError e) {
+			System.out.println("This might fail on machines without fuse-binaries.");
+			e.printStackTrace();
+			Assume.assumeNoException(e); // stop test silently
+			return null;
+		}
+		return wrapper;
 	}
 
 	@Test
