@@ -8,6 +8,7 @@ import static org.junit.Assert.fail;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -33,6 +34,10 @@ import net.fusejna.types.TypeMode.NodeType;
 
 public class AliyunOSSFilesystemTest {
 
+	static final int LARGE_FILE_SIZE = 4888;
+
+	static final int SMALL_FILE_SIZE = 400;
+
 	private static OSSClient client;
 
 	private AliyunOSSFilesystem fs;
@@ -47,6 +52,7 @@ public class AliyunOSSFilesystemTest {
 	static final String EXISTING_FILE1_PATH = RandomStringUtils.random(8, true, true);
 	static final String EXISTING_FILE2_PATH = RandomStringUtils.random(8, true, true);
 	static final String EXISTING_FILE_IN_FOLDER_PATH = EXISTING_FOLDER_NAME + "/" + RandomStringUtils.random(8, true, true);
+	static final String EXISTING_LARGEFILE_IN_FOLDER_PATH = EXISTING_FOLDER_NAME + "/" + RandomStringUtils.random(8, true, true);
 
 	@BeforeClass
 	public static void setUpBucket() throws IOException {
@@ -55,7 +61,10 @@ public class AliyunOSSFilesystemTest {
 
 		createFolder(EXISTING_FOLDER_NAME);
 		Arrays.asList(new String[] { EXISTING_FILE1_PATH, EXISTING_FILE2_PATH, EXISTING_FILE_IN_FOLDER_PATH }).forEach((key) -> {
-			createFile(key);
+			createSmallFile(key);
+		});
+		Arrays.asList(new String[] { EXISTING_LARGEFILE_IN_FOLDER_PATH }).forEach((key) -> {
+			createLargeFile(key);
 		});
 	}
 
@@ -76,8 +85,17 @@ public class AliyunOSSFilesystemTest {
 		}
 	}
 
-	static void createFile(String key) {
-		final String content = "abcdefg";
+	static void createSmallFile(String key) {
+		final String content = RandomStringUtils.random(SMALL_FILE_SIZE, true, true);
+		createFile(key, content);
+	}
+
+	static void createLargeFile(String key) {
+		final String content = RandomStringUtils.random(LARGE_FILE_SIZE, true, true);
+		createFile(key, content);
+	}
+
+	static void createFile(final String key, final String content) {
 		InputStream input = new ByteArrayInputStream(content.getBytes());
 		// 创建上传Object的Metadata
 		ObjectMetadata meta = new ObjectMetadata();
@@ -89,9 +107,10 @@ public class AliyunOSSFilesystemTest {
 
 	@AfterClass
 	public static void cleanBucket() {
-		Arrays.asList(new String[] { EXISTING_FILE1_PATH, EXISTING_FILE2_PATH, EXISTING_FILE_IN_FOLDER_PATH, EXISTING_FOLDER_NAME + "/" }).forEach((key) -> {
-			client.deleteObject(bucketName, key);
-		});
+		Arrays.asList(new String[] { EXISTING_FILE1_PATH, EXISTING_FILE2_PATH, EXISTING_FILE_IN_FOLDER_PATH, EXISTING_LARGEFILE_IN_FOLDER_PATH,
+				EXISTING_FOLDER_NAME + "/" }).forEach((key) -> {
+					client.deleteObject(bucketName, key);
+				});
 		client.deleteBucket(bucketName);
 	}
 
@@ -207,5 +226,31 @@ public class AliyunOSSFilesystemTest {
 			}
 			return true;
 		}
+	}
+
+	@Test
+	public void testRead() {
+		assertEquals(100, fs.read("/" + EXISTING_FILE1_PATH, ByteBuffer.allocate(100), 100, 0, null));
+	}
+
+	@Test
+	public void testReadTooMuch() {
+		int read = fs.read("/" + EXISTING_FILE1_PATH, ByteBuffer.allocate(100000), 100000, 0, null);
+		assertEquals(SMALL_FILE_SIZE, read);
+	}
+
+	@Test
+	public void testReadWayTooMuch() {
+		try {
+			fs.read("/" + EXISTING_FILE1_PATH, ByteBuffer.allocate(100000), Integer.MAX_VALUE, 0, null);
+			fail("Should throw exception as this should not occur");
+		} catch (OutOfMemoryError e) {
+			assertTrue(e.toString(), e.toString().contains("exceeds VM limit") || e.toString().contains("Java heap space"));
+		}
+	}
+
+	@Test
+	public void testReadNonexistingFails() {
+		assertEquals(-ErrorCodes.ENOENT(), fs.read("/noexist", null, 0, 0, null));
 	}
 }

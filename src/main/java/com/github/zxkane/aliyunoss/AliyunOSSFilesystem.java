@@ -2,6 +2,7 @@ package com.github.zxkane.aliyunoss;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.Set;
@@ -9,7 +10,9 @@ import java.util.Set;
 import com.aliyun.oss.OSSClient;
 import com.aliyun.oss.OSSErrorCode;
 import com.aliyun.oss.OSSException;
+import com.aliyun.oss.model.GetObjectRequest;
 import com.aliyun.oss.model.ListObjectsRequest;
+import com.aliyun.oss.model.OSSObject;
 import com.aliyun.oss.model.OSSObjectSummary;
 import com.aliyun.oss.model.ObjectListing;
 import com.aliyun.oss.model.ObjectMetadata;
@@ -76,18 +79,41 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 					if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
 						return -ErrorCodes.ENOENT();
 					}
-					throw new IllegalStateException("Error reading path " + path);
+					throw new IllegalStateException("Error reading path " + path, e);
 				}
 				return 0;
 			}
-			throw new IllegalStateException("Error reading path " + path);
+			throw new IllegalStateException("Error reading path " + path, e);
 		}
 		return 0;
 	}
 
 	@Override
 	public int read(final String path, final ByteBuffer buffer, final long size, final long offset, final FileInfoWrapper info) {
-		return 0;
+		try {
+			GetObjectRequest getObjectRequest = new GetObjectRequest(bucketName, path.substring(1));
+			getObjectRequest.setRange(offset, offset + size);
+
+			OSSObject object = ossClient.getObject(getObjectRequest);
+
+			InputStream objInput = object.getObjectContent();
+			byte[] arr = new byte[(int) size];
+			int read = objInput.read(arr, 0, (int) size);
+			// -1 indicates EOF => nothing to put into the buffer
+			if (read == -1) {
+				return 0;
+			}
+
+			buffer.put(arr, 0, read);
+			return read;
+		} catch (OSSException e) {
+			if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
+				return -ErrorCodes.ENOENT();
+			}
+			throw new IllegalStateException("Error reading contents of path " + path, e);
+		} catch (IOException e) {
+			throw new IllegalStateException("Error reading contents of path " + path, e);
+		}
 	}
 
 	@Override
@@ -106,7 +132,7 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 				if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
 					throw new IllegalStateException("Error reading non-existing directory in path " + path);
 				}
-				throw new IllegalStateException("Error reading directory in path " + path + " due to " + e.getMessage());
+				throw new IllegalStateException("Error reading directory in path " + path, e);
 			}
 			// 列出目录下的所有文件和文件夹
 			listObjectsRequest.setPrefix(path.substring(1) + "/");
