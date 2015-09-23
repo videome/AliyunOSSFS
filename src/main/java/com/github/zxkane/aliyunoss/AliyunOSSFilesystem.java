@@ -5,6 +5,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.aliyun.oss.OSSClient;
 import com.aliyun.oss.OSSErrorCode;
 import com.aliyun.oss.OSSException;
@@ -30,6 +33,8 @@ import net.fusejna.util.FuseFilesystemAdapterFull;
  */
 public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Closeable {
 
+	private static final Logger logger = LoggerFactory.getLogger(AliyunOSSFilesystem.class);
+
 	private OSSClient ossClient;
 
 	private String bucketName;
@@ -52,6 +57,7 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 
 	@Override
 	public int getattr(final String path, final StatWrapper stat) {
+		logger.debug("Getting attribute of path '{}'", path);
 		try {
 			if ("/".equals(path)) {
 				stat.setMode(NodeType.DIRECTORY, true, false, true, true, false, true, true, false, true);
@@ -68,19 +74,25 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 					stat.setAllTimesMillis(objectMetadata.getLastModified().getTime());
 				} catch (OSSException e2) {
 					if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
+						logger.error("Can not find path '{}'.", path);
 						return -ErrorCodes.ENOENT();
 					}
+					logger.error("Error on reading attr of path '{}'.", path);
 					throw new IllegalStateException("Error reading path " + path, e);
 				}
+				logger.debug("Got attribute {} for path '{}'.", stat, path);
 				return 0;
 			}
+			logger.error("Error on reading attr of path '{}'.", path);
 			throw new IllegalStateException("Error reading path " + path, e);
 		}
+		logger.debug("Got attribute {} for path '{}'.", stat, path);
 		return 0;
 	}
 
 	@Override
 	public int read(final String path, final ByteBuffer buffer, final long size, final long offset, final FileInfoWrapper info) {
+		logger.debug("Reading path '{}' with size {} from offset {}.", path, size, offset);
 		try {
 			GetObjectRequest getObjectRequest = new GetObjectRequest(bucketName, path.substring(1));
 			getObjectRequest.setRange(offset, offset + size);
@@ -96,21 +108,28 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 			}
 
 			buffer.put(arr, 0, read);
+			logger.debug("Read path '{}' with length {} from offset {}.", path, read, offset);
 			return read;
 		} catch (OSSException e) {
 			if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
+				logger.error("Can not find path '{}'.", path);
 				return -ErrorCodes.ENOENT();
 			}
+			logger.error("Error on reading path '{}'.", path);
 			throw new IllegalStateException("Error reading contents of path " + path, e);
 		} catch (IOException e) {
+			logger.error("Error on reading path '{}'.", path);
 			throw new IllegalStateException("Error reading contents of path " + path, e);
 		}
 	}
 
 	@Override
 	public int readdir(final String path, final DirectoryFiller filler) {
-		if (path == null || !path.startsWith("/"))
+		logger.debug("Read dir from path '{}'.", path);
+		if (path == null || !path.startsWith("/")) {
+			logger.error("Read dir from illegal path '{}'.", path);
 			throw new IllegalStateException("Error reading directories in illegal path " + path);
+		}
 		// 构造ListObjectsRequest请求
 		ListObjectsRequest listObjectsRequest = new ListObjectsRequest(bucketName);
 		// "/" 为文件夹的分隔符
@@ -123,8 +142,10 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 				ossClient.getObjectMetadata(bucketName, prefix);
 			} catch (OSSException e) {
 				if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
+					logger.error("Read dir from nonexisting path '{}'.", path);
 					throw new IllegalStateException("Error reading non-existing directory in path " + path);
 				}
+				logger.error("Error on reading dir from path '{}'.", path);
 				throw new IllegalStateException("Error reading directory in path " + path, e);
 			}
 			// 列出目录下的所有文件和文件夹
@@ -149,11 +170,7 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 			listObjectsRequest.setMarker(listing.getNextMarker());
 		} while (listing.isTruncated());
 
-		return 0;
-	}
-
-	@Override
-	public int readlink(String path, ByteBuffer buffer, long size) {
+		logger.debug("Read dir from path '{}' with result {}.", path, filler);
 		return 0;
 	}
 
