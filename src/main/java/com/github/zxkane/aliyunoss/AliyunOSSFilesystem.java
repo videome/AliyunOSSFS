@@ -65,13 +65,15 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 				ObjectMetadata objectMetadata = ossClient.getObjectMetadata(bucketName, path.substring(1));
 				stat.setMode(NodeType.FILE, true, false, false, true, false, false, true, false, false);
 				stat.setAllTimesMillis(objectMetadata.getLastModified().getTime());
+				stat.size(objectMetadata.getContentLength());
 			}
 		} catch (OSSException e) {
 			if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
 				try {
 					ObjectMetadata objectMetadata = ossClient.getObjectMetadata(bucketName, path.substring(1) + "/");
-					stat.setMode(NodeType.DIRECTORY, true, false, false, true, false, false, true, false, false);
+					stat.setMode(NodeType.DIRECTORY, true, false, true, true, false, true, true, false, true);
 					stat.setAllTimesMillis(objectMetadata.getLastModified().getTime());
+					stat.size(objectMetadata.getContentLength());
 				} catch (OSSException e2) {
 					if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
 						logger.error("Can not find path '{}'.", path);
