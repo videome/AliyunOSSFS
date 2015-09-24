@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +20,8 @@ import com.aliyun.oss.model.OSSObject;
 import com.aliyun.oss.model.OSSObjectSummary;
 import com.aliyun.oss.model.ObjectListing;
 import com.aliyun.oss.model.ObjectMetadata;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 
 import net.fusejna.DirectoryFiller;
 import net.fusejna.ErrorCodes;
@@ -44,6 +47,9 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 	private int readMaxKeys = 1000;
 
 	private static Set<String> IGNORED_DIRS = new HashSet<String>();
+
+	private static final Object NULL = new Object();
+	Cache<String, Object> notFoundObject = CacheBuilder.newBuilder().concurrencyLevel(1).maximumSize(1000).expireAfterWrite(3, TimeUnit.HOURS).build();
 
 	// OSS using path with '/' to treat it as folder, actually it might don't
 	// have the empty object representing a folder
@@ -79,6 +85,10 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 		if ("/".equals(path)) {
 			stat.setMode(NodeType.DIRECTORY, true, false, true, true, false, true, true, false, true);
 		} else if (IGNORED_DIRS.contains(path)) {
+			logger.debug("Return not found the path '{}' in ignore list.", path);
+			return -ErrorCodes.ENOENT();
+		} else if (NULL.equals(notFoundObject.getIfPresent(path))) {
+			logger.debug("Return not found the path '{}' in known not-found list.", path);
 			return -ErrorCodes.ENOENT();
 		} else {
 			try {
@@ -99,6 +109,7 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 							if (knownDirs.contains(path.substring(1))) {
 								stat.setMode(NodeType.DIRECTORY, true, false, true, true, false, true, true, false, true);
 							} else {
+								notFoundObject.put(path, NULL);
 								logger.error("Can not find path '{}'.", path);
 								return -ErrorCodes.ENOENT();
 							}
