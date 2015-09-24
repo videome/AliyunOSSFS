@@ -5,9 +5,11 @@ import static java.util.Arrays.asList;
 import java.io.File;
 import java.io.FileDescriptor;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -32,26 +34,48 @@ public class AliyunOSSFS {
 	static String accessId, accessKey, endpoint;
 
 	public static void main(String[] args) throws UnsatisfiedLinkError, IllegalArgumentException, IOException, FuseException {
+		File defaultCredentialFile = new File(new File(System.getProperty("user.home")), ".aliyuncli/osscredentials");
 		OptionParser parser = new OptionParser() {
 			{
 				accepts("i").withRequiredArg().ofType(String.class).describedAs("accessId");
-				accepts("k").withRequiredArg().ofType(String.class).describedAs("accessKey");
-				accepts("e").withRequiredArg().ofType(String.class).describedAs("endpoint");
+				accepts("k").requiredIf("i").withRequiredArg().ofType(String.class).describedAs("accessKey");
+				accepts("f").withRequiredArg().ofType(File.class).defaultsTo(defaultCredentialFile).describedAs("credential file");
+				accepts("e").requiredIf("i").withRequiredArg().ofType(String.class).describedAs("endpoint");
 				accepts("b").withRequiredArg().ofType(String.class).describedAs("bucketName");
-				accepts("m").withRequiredArg().ofType(String.class).describedAs("mountpoint");
+				accepts("m").withRequiredArg().ofType(File.class).describedAs("mountpoint");
 				acceptsAll(asList("h", "?"), "show help").forHelp();
 			}
 		};
 
 		OptionSet options = parser.parse(args);
 
-		if (!options.has("i") || !options.has("k") || !options.has("e") || !options.has("b") || !options.has("m")) {
+		if ((options.has("i") && !(options.has("k") && options.has("e"))) || !options.has("b") || !options.has("m")) {
 			parser.printHelpOn(System.out);
 			System.exit(1);
 		} else {
-			accessId = options.valueOf("i").toString();
-			accessKey = options.valueOf("k").toString();
-			endpoint = options.valueOf("e").toString();
+			if (!options.has("i")) {
+				final File credentialFile = new File(options.valueOf("f").toString());
+				Properties prop = new Properties();
+				try {
+					InputStream input = new FileInputStream(credentialFile);
+					try {
+						prop.load(input);
+						accessId = prop.getProperty("accessid");
+						accessKey = prop.getProperty("accesskey");
+						endpoint = prop.getProperty("host");
+					} finally {
+						input.close();
+					}
+				} catch (FileNotFoundException e) {
+					System.err.println("Credential file does not exist.");
+					System.exit(2);
+				}
+			} else {
+				accessId = options.valueOf("i").toString();
+				accessKey = options.valueOf("k").toString();
+				endpoint = options.valueOf("e").toString();
+			}
+
 			try {
 				mount(options.valueOf("b").toString(), new File(options.valueOf("m").toString()));
 
