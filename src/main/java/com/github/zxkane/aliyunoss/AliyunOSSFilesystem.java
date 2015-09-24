@@ -4,6 +4,8 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.HashSet;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +43,16 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 
 	private int readMaxKeys = 1000;
 
+	private static Set<String> IGNORED_DIRS = new HashSet<String>();
+
+	static {
+		IGNORED_DIRS.add("/._.");
+		IGNORED_DIRS.add("/.DS_Store");
+		IGNORED_DIRS.add("/.hidden");
+		IGNORED_DIRS.add("/.Trash");
+		IGNORED_DIRS.add("/.Trash-1000");
+	}
+
 	public AliyunOSSFilesystem(OSSClient ossClient, String bucketName, boolean enableLogging) throws IOException {
 		super();
 
@@ -58,35 +70,38 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 	@Override
 	public int getattr(final String path, final StatWrapper stat) {
 		logger.debug("Getting attribute of path '{}'", path);
-		try {
-			if ("/".equals(path)) {
-				stat.setMode(NodeType.DIRECTORY, true, false, true, true, false, true, true, false, true);
-			} else {
+		if ("/".equals(path)) {
+			stat.setMode(NodeType.DIRECTORY, true, false, true, true, false, true, true, false, true);
+		} else if (IGNORED_DIRS.contains(path)) {
+			return -ErrorCodes.ENOENT();
+		} else {
+			try {
 				ObjectMetadata objectMetadata = ossClient.getObjectMetadata(bucketName, path.substring(1));
 				stat.setMode(NodeType.FILE, true, false, false, true, false, false, true, false, false);
 				stat.setAllTimesMillis(objectMetadata.getLastModified().getTime());
 				stat.size(objectMetadata.getContentLength());
-			}
-		} catch (OSSException e) {
-			if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
-				try {
-					ObjectMetadata objectMetadata = ossClient.getObjectMetadata(bucketName, path.substring(1) + "/");
-					stat.setMode(NodeType.DIRECTORY, true, false, true, true, false, true, true, false, true);
-					stat.setAllTimesMillis(objectMetadata.getLastModified().getTime());
-					stat.size(objectMetadata.getContentLength());
-				} catch (OSSException e2) {
-					if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
-						logger.error("Can not find path '{}'.", path);
-						return -ErrorCodes.ENOENT();
+			} catch (OSSException e) {
+				if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
+					final String folderKey = path.substring(1) + "/";
+					try {
+						ObjectMetadata objectMetadata = ossClient.getObjectMetadata(bucketName, folderKey);
+						stat.setMode(NodeType.DIRECTORY, true, false, true, true, false, true, true, false, true);
+						stat.setAllTimesMillis(objectMetadata.getLastModified().getTime());
+						stat.size(objectMetadata.getContentLength());
+					} catch (OSSException e2) {
+						if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
+							logger.error("Can not find path '{}'.", path);
+							return -ErrorCodes.ENOENT();
+						}
+						logger.error("Error on reading attr of path '{}'.", path);
+						throw new IllegalStateException("Error reading path " + path, e);
 					}
-					logger.error("Error on reading attr of path '{}'.", path);
-					throw new IllegalStateException("Error reading path " + path, e);
+					logger.debug("Got attribute {} for path '{}'.", stat, path);
+					return 0;
 				}
-				logger.debug("Got attribute {} for path '{}'.", stat, path);
-				return 0;
+				logger.error("Error on reading attr of path '{}'.", path);
+				throw new IllegalStateException("Error reading path " + path, e);
 			}
-			logger.error("Error on reading attr of path '{}'.", path);
-			throw new IllegalStateException("Error reading path " + path, e);
 		}
 		logger.debug("Got attribute {} for path '{}'.", stat, path);
 		return 0;

@@ -26,7 +26,8 @@ repositories {
 dependencies {
 	compile project(':fuse-jna'),
 		'com.aliyun.oss:aliyun-sdk-oss:2.0.5',
-		'org.slf4j:slf4j-simple:1.7.12',
+		'org.slf4j:slf4j-api:1.7.12',
+		'ch.qos.logback:logback-classic:1.1.3',
 		'org.apache.commons:commons-lang3:3.4',
 		'com.google.guava:guava:19.0-rc2',
 		'jline:jline:2.13',

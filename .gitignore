@@ -5,3 +5,5 @@
 .classpath
 .gradle/
 .gradletasknamecache
+aliyunoss*.log
+archived/
