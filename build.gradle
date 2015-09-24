@@ -38,7 +38,9 @@ dependencies {
 }
 
 test {
-    systemProperties 'property': 'value'
+    systemProperty "oss-key", System.getProperty("oss-key")
+    systemProperty "oss-secret", System.getProperty("oss-secret")
+    systemProperty "oss-endpoint", System.getProperty("oss-endpoint")
 }
 
 uploadArchives {

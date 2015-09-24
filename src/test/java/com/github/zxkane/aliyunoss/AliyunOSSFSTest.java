@@ -29,23 +29,6 @@ public class AliyunOSSFSTest extends AbstractAliyunOSSFSTest {
 	}
 
 	@Test
-	public void testMainMultiple() throws Exception {
-		File mountPoint = File.createTempFile("AliOSSTest", ".dir");
-		try {
-			// if we have one that works and the last one an invalid one we get
-			// an exception, but did the mounting
-			// for the first one
-			AliyunOSSFS
-					.main(new String[] { "-i", accessKeyId, "-k", accessKeySecret, "-e", endpoint, "-b", "nonsuchbucket", "-m", mountPoint.getAbsolutePath() });
-			fail("Should throw exception with invalid oss bucket");
-		} catch (IOException e) {
-			// happens when run in CloudBees, but could not find out details...
-		} catch (IllegalStateException e) {
-			assertTrue("Had: " + e.getMessage(), e.getMessage().contains("invalidrepo"));
-		}
-	}
-
-	@Test
 	public void testMount() throws Exception {
 		try {
 			assertFalse(AliyunOSSFS.unmount("notexisting"));
@@ -58,10 +41,9 @@ public class AliyunOSSFSTest extends AbstractAliyunOSSFSTest {
 			try {
 				AliyunOSSFS.mount(bucketName, mountPoint);
 				AliyunOSSFS.list();
-				assertTrue(AliyunOSSFS.unmount(bucketName));
+				assertTrue(AliyunOSSFS.unmount(mountPoint.getAbsolutePath()));
 			} finally {
 				FileUtils.deleteDirectory(mountPoint);
-
 			}
 		} catch (IOException e) {
 			// happens when run in CloudBees, but could not find out details...

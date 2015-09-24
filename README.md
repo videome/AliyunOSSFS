@@ -17,6 +17,8 @@ Note: The "--recursive" is necessary to clone necessary submodules as well!
 
     build/install/AliyunOSSFS/bin/AliyunOSSFS -i <access id of your OSS> -k <access key of your OSS> -e <endpoint of your OSS> -b <the bucket in your OSS> -m <location of mountpoint>
 
+#### Test it
+	./gradlew -Doss-key=<access id of your OSS> -Doss-secret=<access key of your OSS> -Doss-endpoint=http://oss-cn-beijing.aliyuncs.com test
    
 [Linux-FUSE]: http://fuse.sourceforge.net/
 [fuse-jna]: https://github.com/EtiennePerot/fuse-jna
