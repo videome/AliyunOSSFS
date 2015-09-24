@@ -51,6 +51,8 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 
 	static {
 		IGNORED_DIRS.add("/._.");
+		IGNORED_DIRS.add("/.git");
+		IGNORED_DIRS.add("/HEAD");
 		IGNORED_DIRS.add("/.DS_Store");
 		IGNORED_DIRS.add("/.hidden");
 		IGNORED_DIRS.add("/.Trash");
@@ -162,17 +164,20 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 		listObjectsRequest.setDelimiter("/");
 		listObjectsRequest.setMaxKeys(this.readMaxKeys);
 
-		final String prefix = path.substring(1) + "/";
+		final String folderName = path.substring(1);
+		final String prefix = folderName + "/";
 		if (!"/".equals(path)) {
-			try {
-				ossClient.getObjectMetadata(bucketName, prefix);
-			} catch (OSSException e) {
-				if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
-					logger.error("Read dir from nonexisting path '{}'.", path);
-					throw new IllegalStateException("Error reading non-existing directory in path " + path);
+			if (!knownDirs.contains(folderName)) {
+				try {
+					ossClient.getObjectMetadata(bucketName, prefix);
+				} catch (OSSException e) {
+					if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
+						logger.error("Read dir from nonexisting path '{}'.", path);
+						throw new IllegalStateException("Error reading non-existing directory in path " + path);
+					}
+					logger.error("Error on reading dir from path '{}'.", path);
+					throw new IllegalStateException("Error reading directory in path " + path, e);
 				}
-				logger.error("Error on reading dir from path '{}'.", path);
-				throw new IllegalStateException("Error reading directory in path " + path, e);
 			}
 			// 列出目录下的所有文件和文件夹
 			listObjectsRequest.setPrefix(prefix);
