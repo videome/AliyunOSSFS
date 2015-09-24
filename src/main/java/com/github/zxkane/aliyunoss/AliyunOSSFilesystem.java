@@ -45,6 +45,10 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 
 	private static Set<String> IGNORED_DIRS = new HashSet<String>();
 
+	// OSS using path with '/' to treat it as folder, actually it might don't
+	// have the empty object representing a folder
+	private Set<String> knownDirs = new HashSet<String>(1000);
+
 	static {
 		IGNORED_DIRS.add("/._.");
 		IGNORED_DIRS.add("/.DS_Store");
@@ -90,11 +94,16 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 						stat.size(objectMetadata.getContentLength());
 					} catch (OSSException e2) {
 						if (OSSErrorCode.NO_SUCH_KEY.equals(e.getErrorCode())) {
-							logger.error("Can not find path '{}'.", path);
-							return -ErrorCodes.ENOENT();
+							if (knownDirs.contains(path.substring(1))) {
+								stat.setMode(NodeType.DIRECTORY, true, false, true, true, false, true, true, false, true);
+							} else {
+								logger.error("Can not find path '{}'.", path);
+								return -ErrorCodes.ENOENT();
+							}
+						} else {
+							logger.error("Error on reading attr of path '{}'.", path);
+							throw new IllegalStateException("Error reading path " + path, e);
 						}
-						logger.error("Error on reading attr of path '{}'.", path);
-						throw new IllegalStateException("Error reading path " + path, e);
 					}
 					logger.debug("Got attribute {} for path '{}'.", stat, path);
 					return 0;
@@ -174,7 +183,9 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 			listing = ossClient.listObjects(listObjectsRequest);
 			// 遍历所有CommonPrefix
 			for (String commonPrefix : listing.getCommonPrefixes()) {
-				filler.add("/" + commonPrefix.substring(0, commonPrefix.length() - 1));
+				final String folderNameWithoutTrailer = commonPrefix.substring(0, commonPrefix.length() - 1);
+				filler.add("/" + folderNameWithoutTrailer);
+				knownDirs.add(folderNameWithoutTrailer);
 			}
 
 			// 遍历所有Object

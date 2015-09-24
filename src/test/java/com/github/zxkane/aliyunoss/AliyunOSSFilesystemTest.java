@@ -55,7 +55,25 @@ public class AliyunOSSFilesystemTest extends AbstractAliyunOSSFSTest {
 		assertEquals(-ErrorCodes.ENOENT(), fs.getattr(path, stat));
 		// invalid top-level-dir causes ENOENT
 		assertEquals(-ErrorCodes.ENOENT(), fs.getattr("/notexistingmain", stat));
+	}
 
+	@Test
+	public void testGetAttrFolderThatIsVirtual() {
+		final String folderName = RandomStringUtils.random(8, true, true);
+		final String aFileInFolder = folderName + "/" + folderName;
+		try {
+			createSmallFile(aFileInFolder);
+
+			final List<String> filledFiles = new ArrayList<String>();
+			DirectoryFiller filler = new DirectoryFillerImplementation(filledFiles);
+			assertEquals(0, fs.readdir("/", filler));
+			assertTrue(filledFiles.contains("/" + folderName));
+			StatWrapper stat = getStatsWrapper();
+			assertEquals(0, fs.getattr("/" + folderName, stat));
+			assertEquals(NodeType.DIRECTORY, stat.type());
+		} finally {
+			client.deleteObject(bucketName, aFileInFolder);
+		}
 	}
 
 	private StatWrapper getStatsWrapper() {
