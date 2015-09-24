@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import com.aliyun.oss.OSSClient;
 import com.aliyun.oss.OSSErrorCode;
 import com.aliyun.oss.OSSException;
+import com.aliyun.oss.common.utils.IOUtils;
 import com.aliyun.oss.model.GetObjectRequest;
 import com.aliyun.oss.model.ListObjectsRequest;
 import com.aliyun.oss.model.OSSObject;
@@ -134,19 +135,26 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 		logger.debug("Reading path '{}' with size {} from offset {}.", path, size, offset);
 		try {
 			GetObjectRequest getObjectRequest = new GetObjectRequest(bucketName, path.substring(1));
-			getObjectRequest.setRange(offset, offset + size);
+			getObjectRequest.setRange(offset, offset + size - 1);
 
 			OSSObject object = ossClient.getObject(getObjectRequest);
 
-			InputStream objInput = object.getObjectContent();
-			byte[] arr = new byte[(int) size];
-			int read = objInput.read(arr, 0, (int) size);
-			// -1 indicates EOF => nothing to put into the buffer
-			if (read == -1) {
-				return 0;
-			}
+			final InputStream objInput = object.getObjectContent();
+			final int length = (int) object.getObjectMetadata().getContentLength();
+			int read = 0;
+			final int bufSize = 1024;
+			try {
+				byte[] readBuffer = new byte[bufSize];
+				int bytesRead;
+				while ((bytesRead = objInput.read(readBuffer)) > -1) {
+					read += bytesRead;
+					buffer.put(readBuffer, 0, bytesRead);
+				}
 
-			buffer.put(arr, 0, read);
+				assert(read == length);
+			} finally {
+				IOUtils.safeClose(objInput);
+			}
 			logger.debug("Read path '{}' with length {} from offset {}.", path, read, offset);
 			return read;
 		} catch (OSSException e) {

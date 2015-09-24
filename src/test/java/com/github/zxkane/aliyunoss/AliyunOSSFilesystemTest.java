@@ -200,13 +200,9 @@ public class AliyunOSSFilesystemTest extends AbstractAliyunOSSFSTest {
 	}
 
 	@Test
-	public void testReadWayTooMuch() {
-		try {
-			fs.read("/" + EXISTING_FILE1_PATH, ByteBuffer.allocate(100000), Integer.MAX_VALUE, 0, null);
-			fail("Should throw exception as this should not occur");
-		} catch (OutOfMemoryError e) {
-			assertTrue(e.toString(), e.toString().contains("exceeds VM limit") || e.toString().contains("Java heap space"));
-		}
+	public void testReadLargeFile() {
+		int read = fs.read("/" + EXISTING_LARGEFILE_IN_FOLDER_PATH, ByteBuffer.allocate(3096), 3096, 1024, null);
+		assertEquals(3096, read);
 	}
 
 	@Test
