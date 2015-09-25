@@ -56,7 +56,15 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 	// have the empty object representing a folder
 	private Set<String> knownDirs = new HashSet<String>(1000);
 
+	private static final String IGNORE_PREFIX;
+
+	/**
+	 * Those dirs or files might be retrieved in callback 'getattr' by shells or
+	 * file explorers, ignore them to avoid unnecessary requests to Aliyun OSS.
+	 */
 	static {
+		IGNORE_PREFIX = "._";
+
 		IGNORED_DIRS.add("/._.");
 		IGNORED_DIRS.add("/.git");
 		IGNORED_DIRS.add("/HEAD");
@@ -87,6 +95,9 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 			stat.setMode(NodeType.DIRECTORY, true, false, true, true, false, true, true, false, true);
 		} else if (IGNORED_DIRS.contains(path)) {
 			logger.debug("Return not found the path '{}' in ignore list.", path);
+			return -ErrorCodes.ENOENT();
+		} else if (path.substring(path.lastIndexOf('/')).startsWith(IGNORE_PREFIX)) {
+			logger.debug("Return not found the path '{}' with ingore prefix '{}'.", path, IGNORE_PREFIX);
 			return -ErrorCodes.ENOENT();
 		} else if (NULL.equals(notFoundObject.getIfPresent(path))) {
 			logger.debug("Return not found the path '{}' in known not-found list.", path);
