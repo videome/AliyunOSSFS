@@ -219,8 +219,11 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 			// 遍历所有CommonPrefix
 			for (String commonPrefix : listing.getCommonPrefixes()) {
 				final String folderNameWithoutTrailer = commonPrefix.substring(0, commonPrefix.length() - 1);
-				filler.add("/" + folderNameWithoutTrailer);
+				final String folderPath = "/" + folderNameWithoutTrailer;
+				filler.add(folderPath);
 				knownDirs.add(folderNameWithoutTrailer);
+				if (notFoundObject.getIfPresent(folderPath) != null)
+					notFoundObject.invalidate(folderPath);
 			}
 
 			// 遍历所有Object
