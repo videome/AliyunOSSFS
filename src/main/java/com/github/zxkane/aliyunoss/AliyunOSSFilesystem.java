@@ -155,14 +155,17 @@ public class AliyunOSSFilesystem extends FuseFilesystemAdapterFull implements Cl
 			int read = 0;
 			final int bufSize = 1024;
 			try {
+				if (length > size) {
+					// anyway OSS API does not honor the range specified in
+					// GetObjectRequest
+					objInput.skip(offset);
+				}
 				byte[] readBuffer = new byte[bufSize];
 				int bytesRead;
 				while ((bytesRead = objInput.read(readBuffer)) > -1) {
 					read += bytesRead;
 					buffer.put(readBuffer, 0, bytesRead);
 				}
-
-				assert(read == length);
 			} finally {
 				IOUtils.safeClose(objInput);
 			}
