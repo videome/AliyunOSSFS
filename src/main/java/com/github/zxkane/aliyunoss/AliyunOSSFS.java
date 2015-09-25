@@ -134,7 +134,7 @@ public class AliyunOSSFS {
 		}
 
 		// now create the Aliyun OSS filesystem
-		AliyunOSSFilesystem ossFS = new AliyunOSSFilesystem(new OSSClient(endpoint, accessId, accessKey), bucketName, true);
+		AliyunOSSFilesystem ossFS = new AliyunOSSFilesystem(new OSSClient(endpoint, accessId, accessKey), bucketName, false);
 
 		// ensure that we do not have a previous mount lingering on the
 		// mountpoint
